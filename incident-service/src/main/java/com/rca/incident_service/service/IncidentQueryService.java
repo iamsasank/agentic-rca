@@ -1,5 +1,6 @@
-package com.rca.incident_service;
+package com.rca.incident_service.service;
 
+import com.rca.incident_service.exception.IncidentNotFoundException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -7,16 +8,16 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
-class IncidentQueryService {
+public class IncidentQueryService {
 	private final JdbcTemplate jdbc;
 	private final DatabaseService database;
 
-	IncidentQueryService(JdbcTemplate jdbc, DatabaseService database) {
+	public IncidentQueryService(JdbcTemplate jdbc, DatabaseService database) {
 		this.jdbc = jdbc;
 		this.database = database;
 	}
 
-	List<Map<String, Object>> listIncidents() {
+	public List<Map<String, Object>> listIncidents() {
 		database.ensureSchema();
 		return jdbc.queryForList("""
 				SELECT id, title, severity, service, environment, started_at AS "startedAt",
@@ -25,7 +26,7 @@ class IncidentQueryService {
 				""");
 	}
 
-	Map<String, Object> getIncident(String incidentId) {
+	public Map<String, Object> getIncident(String incidentId) {
 		database.ensureSchema();
 		List<Map<String, Object>> rows = jdbc.queryForList("""
 				SELECT id, title, severity, service, environment, started_at AS "startedAt",
@@ -47,7 +48,6 @@ class IncidentQueryService {
 	}
 
 	private Integer count(String table, String incidentId) {
-		// rag_chunks stores incident_id inside the metadata JSON column (Spring AI PgVectorStore schema)
 		String sql = "rag_chunks".equals(table)
 				? "SELECT count(*) FROM rag_chunks WHERE metadata->>'incident_id' = ?"
 				: "SELECT count(*) FROM " + table + " WHERE incident_id = ?";

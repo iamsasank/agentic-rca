@@ -1,8 +1,10 @@
-package com.rca.incident_service;
+package com.rca.incident_service.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rca.incident_service.config.RcaProperties;
+import com.rca.incident_service.exception.JobNotFoundException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -15,10 +17,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
-class RcaJobService {
+public class RcaJobService {
 	private static final ObjectMapper MAPPER = new ObjectMapper();
-	private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
-	};
+	private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
 	private final StringRedisTemplate redis;
 	private final JdbcTemplate jdbc;
@@ -26,7 +27,8 @@ class RcaJobService {
 	private final IncidentQueryService incidents;
 	private final DatabaseService database;
 
-	RcaJobService(StringRedisTemplate redis, JdbcTemplate jdbc, RcaProperties properties, IncidentQueryService incidents, DatabaseService database) {
+	public RcaJobService(StringRedisTemplate redis, JdbcTemplate jdbc, RcaProperties properties,
+			IncidentQueryService incidents, DatabaseService database) {
 		this.redis = redis;
 		this.jdbc = jdbc;
 		this.properties = properties;
@@ -34,7 +36,7 @@ class RcaJobService {
 		this.database = database;
 	}
 
-	Map<String, Object> health() {
+	public Map<String, Object> health() {
 		database.ensureSchema();
 		Map<String, Object> health = new LinkedHashMap<>();
 		health.put("service", "incident-service");
@@ -46,15 +48,15 @@ class RcaJobService {
 		return health;
 	}
 
-	Object listIncidents() {
+	public Object listIncidents() {
 		return incidents.listIncidents();
 	}
 
-	Object getIncident(String incidentId) {
+	public Object getIncident(String incidentId) {
 		return incidents.getIncident(incidentId);
 	}
 
-	Map<String, Object> createJob(String incidentId) {
+	public Map<String, Object> createJob(String incidentId) {
 		getIncident(incidentId);
 		String jobId = UUID.randomUUID().toString();
 		String now = Instant.now().toString();
@@ -81,7 +83,7 @@ class RcaJobService {
 		);
 	}
 
-	Map<String, Object> getStatus(String jobId) {
+	public Map<String, Object> getStatus(String jobId) {
 		List<Map<String, Object>> rows = jdbc.queryForList("""
 				SELECT job_id AS "jobId", incident_id AS "incidentId", status, current_step AS "currentStep",
 				       requested_by AS "requestedBy", error, created_at AS "createdAt",
@@ -94,7 +96,7 @@ class RcaJobService {
 		return rows.get(0);
 	}
 
-	List<Map<String, Object>> getTrace(String jobId) {
+	public List<Map<String, Object>> getTrace(String jobId) {
 		getStatus(jobId);
 		return jdbc.queryForList("""
 				SELECT agent_name AS "agentName", tool_name AS "toolName", input_summary AS "inputSummary",
@@ -104,7 +106,7 @@ class RcaJobService {
 				""", jobId);
 	}
 
-	Map<String, Object> getResult(String jobId) {
+	public Map<String, Object> getResult(String jobId) {
 		List<Map<String, Object>> rows = jdbc.queryForList("""
 				SELECT job_id AS "jobId", incident_id AS "incidentId", result_json AS "result", postmortem, created_at AS "createdAt"
 				FROM analysis_results WHERE job_id = ?
@@ -115,7 +117,7 @@ class RcaJobService {
 		return rows.get(0);
 	}
 
-	String getPostmortem(String jobId) {
+	public String getPostmortem(String jobId) {
 		return getResult(jobId).get("postmortem").toString();
 	}
 
@@ -124,12 +126,10 @@ class RcaJobService {
 			RedisConnection connection = redis.getConnectionFactory().getConnection();
 			try {
 				return "PONG".equals(connection.ping());
-			}
-			finally {
+			} finally {
 				connection.close();
 			}
-		}
-		catch (RedisConnectionFailureException ex) {
+		} catch (RedisConnectionFailureException ex) {
 			return false;
 		}
 	}
@@ -137,8 +137,7 @@ class RcaJobService {
 	private String toJson(Object value) {
 		try {
 			return MAPPER.writeValueAsString(value);
-		}
-		catch (JsonProcessingException ex) {
+		} catch (JsonProcessingException ex) {
 			throw new IllegalStateException("Unable to serialize job payload", ex);
 		}
 	}
@@ -147,8 +146,7 @@ class RcaJobService {
 		try {
 			Integer value = jdbc.queryForObject("SELECT 1", Integer.class);
 			return value != null && value == 1;
-		}
-		catch (Exception ex) {
+		} catch (Exception ex) {
 			return false;
 		}
 	}

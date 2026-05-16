@@ -1,4 +1,4 @@
-package com.rca.incident_service;
+package com.rca.incident_service.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 

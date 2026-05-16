@@ -1,9 +1,10 @@
-package com.rca.incident_service;
+package com.rca.incident_service.service;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rca.incident_service.config.RcaProperties;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,7 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-class IngestionService {
+public class IngestionService {
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 	private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 	private static final TokenTextSplitter SPLITTER = new TokenTextSplitter();
@@ -29,7 +30,7 @@ class IngestionService {
 	private final VectorStore vectorStore;
 	private final Path sampleDataDir;
 
-	IngestionService(JdbcTemplate jdbc, DatabaseService database, VectorStore vectorStore,
+	public IngestionService(JdbcTemplate jdbc, DatabaseService database, VectorStore vectorStore,
 			RcaProperties properties) {
 		this.jdbc = jdbc;
 		this.database = database;
@@ -38,7 +39,7 @@ class IngestionService {
 	}
 
 	@Transactional
-	Map<String, Object> ingestSampleIncidents() {
+	public Map<String, Object> ingestSampleIncidents() {
 		database.ensureSchema();
 		int incidents = 0, logs = 0, alerts = 0, metrics = 0, events = 0, chunks = 0;
 
@@ -57,11 +58,9 @@ class IngestionService {
 				events  += ingestEvents(incidentId,   incidentDir.resolve("events.json"));
 				ingestRunbook(incidentId, incidentDir.resolve("runbook.md"));
 
-				// ── Spring AI ETL: build Documents → split → embed → store ──────
 				chunks += embedAndStore(incidentId, incidentDir);
 			}
-		}
-		catch (IOException ex) {
+		} catch (IOException ex) {
 			throw new IllegalStateException("Unable to ingest sample data from " + sampleDataDir, ex);
 		}
 
@@ -82,7 +81,6 @@ class IngestionService {
 	private int embedAndStore(String incidentId, Path incidentDir) throws IOException {
 		List<Document> raw = new ArrayList<>();
 
-		// Logs
 		for (String line : Files.readAllLines(incidentDir.resolve("logs.jsonl"))) {
 			if (!line.isBlank()) {
 				Map<String, Object> log = fromJson(line);
@@ -93,7 +91,6 @@ class IngestionService {
 			}
 		}
 
-		// Alerts
 		for (Map<String, Object> alert : readList(incidentDir.resolve("alerts.json"))) {
 			raw.add(new Document(
 					alert.getOrDefault("message", "").toString(),
@@ -101,7 +98,6 @@ class IngestionService {
 							"source_id", alert.getOrDefault("id", "").toString())));
 		}
 
-		// Events
 		for (Map<String, Object> event : readList(incidentDir.resolve("events.json"))) {
 			raw.add(new Document(
 					event.getOrDefault("description", "").toString(),
@@ -109,7 +105,6 @@ class IngestionService {
 							"source_id", event.getOrDefault("id", "").toString())));
 		}
 
-		// Metrics — one summary document per metric name
 		JsonNode series = readJson(incidentDir.resolve("metrics.json")).path("series");
 		series.fields().forEachRemaining(entry -> {
 			double min = Double.MAX_VALUE, max = Double.MIN_VALUE;
@@ -124,22 +119,17 @@ class IngestionService {
 							"source_id", entry.getKey())));
 		});
 
-		// Runbook — TokenTextSplitter chunks the markdown automatically
 		String runbookContent = Files.readString(incidentDir.resolve("runbook.md"));
-		List<Document> runbookDocs = new ArrayList<>();
-		runbookDocs.add(new Document(runbookContent,
+		List<Document> runbookDocs = List.of(new Document(runbookContent,
 				Map.of("incident_id", incidentId, "source_type", "runbook", "source_id", "runbook")));
 
-		// Split all documents using Spring AI's token-aware splitter
 		List<Document> chunks = new ArrayList<>(SPLITTER.apply(raw));
 		chunks.addAll(SPLITTER.apply(runbookDocs));
-
-		// Embed + store via Spring AI PgVectorStore (ETL terminal step)
 		vectorStore.accept(chunks);
 		return chunks.size();
 	}
 
-	// ── Structured-table ingestion (unchanged) ─────────────────────────────────
+	// ── Structured-table ingestion ─────────────────────────────────────────────
 
 	private void upsertIncident(Map<String, Object> metadata) {
 		jdbc.update("""
