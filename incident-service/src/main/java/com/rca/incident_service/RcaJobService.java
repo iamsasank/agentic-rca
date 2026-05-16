@@ -16,20 +16,19 @@ import org.springframework.stereotype.Service;
 
 @Service
 class RcaJobService {
+	private static final ObjectMapper MAPPER = new ObjectMapper();
 	private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
 	};
 
 	private final StringRedisTemplate redis;
 	private final JdbcTemplate jdbc;
-	private final ObjectMapper objectMapper;
 	private final RcaProperties properties;
 	private final IncidentQueryService incidents;
 	private final DatabaseService database;
 
-	RcaJobService(StringRedisTemplate redis, JdbcTemplate jdbc, ObjectMapper objectMapper, RcaProperties properties, IncidentQueryService incidents, DatabaseService database) {
+	RcaJobService(StringRedisTemplate redis, JdbcTemplate jdbc, RcaProperties properties, IncidentQueryService incidents, DatabaseService database) {
 		this.redis = redis;
 		this.jdbc = jdbc;
-		this.objectMapper = objectMapper;
 		this.properties = properties;
 		this.incidents = incidents;
 		this.database = database;
@@ -137,7 +136,7 @@ class RcaJobService {
 
 	private String toJson(Object value) {
 		try {
-			return objectMapper.writeValueAsString(value);
+			return MAPPER.writeValueAsString(value);
 		}
 		catch (JsonProcessingException ex) {
 			throw new IllegalStateException("Unable to serialize job payload", ex);

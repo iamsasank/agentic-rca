@@ -16,12 +16,11 @@ class GeminiEmbeddingClient {
 	private final String model;
 
 	GeminiEmbeddingClient(
-			RestClient.Builder builder,
 			@Value("${GOOGLE_API_KEY:}") String apiKey,
 			@Value("${gemini.embedding.model:text-embedding-004}") String model) {
-		this.restClient = builder.baseUrl(BASE_URL).build();
 		this.apiKey = apiKey;
 		this.model = model;
+		this.restClient = RestClient.create(BASE_URL);
 	}
 
 	List<Double> embed(String text) {

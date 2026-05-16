@@ -17,18 +17,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 class IngestionService {
+	private static final ObjectMapper MAPPER = new ObjectMapper();
 	private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
 	};
 
-	private final ObjectMapper objectMapper;
 	private final JdbcTemplate jdbc;
 	private final DatabaseService database;
 	private final Path sampleDataDir;
 	private final GeminiEmbeddingClient embeddingClient;
 
-	IngestionService(ObjectMapper objectMapper, JdbcTemplate jdbc, DatabaseService database,
+	IngestionService(JdbcTemplate jdbc, DatabaseService database,
 			RcaProperties properties, GeminiEmbeddingClient embeddingClient) {
-		this.objectMapper = objectMapper;
 		this.jdbc = jdbc;
 		this.database = database;
 		this.sampleDataDir = Path.of(properties.sampleDataDir()).normalize();
@@ -223,7 +222,7 @@ class IngestionService {
 
 	private Map<String, Object> readMap(Path path) {
 		try {
-			return objectMapper.readValue(path.toFile(), MAP_TYPE);
+			return MAPPER.readValue(path.toFile(), MAP_TYPE);
 		}
 		catch (IOException ex) {
 			throw new IllegalStateException("Unable to read " + path, ex);
@@ -232,7 +231,7 @@ class IngestionService {
 
 	private List<Map<String, Object>> readList(Path path) {
 		try {
-			return objectMapper.readValue(path.toFile(), new TypeReference<>() {
+			return MAPPER.readValue(path.toFile(), new TypeReference<>() {
 			});
 		}
 		catch (IOException ex) {
@@ -242,7 +241,7 @@ class IngestionService {
 
 	private JsonNode readJson(Path path) {
 		try {
-			return objectMapper.readTree(path.toFile());
+			return MAPPER.readTree(path.toFile());
 		}
 		catch (IOException ex) {
 			throw new IllegalStateException("Unable to read " + path, ex);
@@ -251,7 +250,7 @@ class IngestionService {
 
 	private Map<String, Object> fromJson(String value) {
 		try {
-			return objectMapper.readValue(value, MAP_TYPE);
+			return MAPPER.readValue(value, MAP_TYPE);
 		}
 		catch (JsonProcessingException ex) {
 			throw new IllegalStateException("Unable to parse JSON line", ex);
@@ -260,7 +259,7 @@ class IngestionService {
 
 	private String toJson(Object value) {
 		try {
-			return objectMapper.writeValueAsString(value);
+			return MAPPER.writeValueAsString(value);
 		}
 		catch (JsonProcessingException ex) {
 			throw new IllegalStateException("Unable to serialize JSON", ex);
