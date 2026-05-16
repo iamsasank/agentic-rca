@@ -16,9 +16,9 @@ STEP_DELAY = float(os.getenv("RCA_STEP_DELAY_SECONDS", "0.4"))
 
 _SYSTEM = """\
 You are an incident commander correlating alerts and operational events during a production incident.
-Given the alert list, operational events (deploys/restarts/config changes), log findings, and metric findings:
-1. Identify which alert fired first
-2. Note whether any deployment or config change event preceded the error onset by less than 10 minutes
+Given the alert list and operational events (deploys/restarts/config changes):
+1. Identify which alert fired first and build a chronological timeline
+2. Note whether any deployment or config change event preceded the first alert by less than 10 minutes
 3. State the most likely trigger event
 
 Output: a numbered chronological timeline and a 2–3 sentence root trigger hypothesis.\
@@ -47,9 +47,7 @@ class AlertCorrelationAgent:
 
         user_content = (
             f"Alerts:\n{alert_text}\n\n"
-            f"Operational events:\n{event_text}\n\n"
-            f"Log findings:\n{state.get('log_findings', 'N/A')}\n\n"
-            f"Metric findings:\n{state.get('metric_findings', 'N/A')}"
+            f"Operational events:\n{event_text}"
         )
 
         response = self.llm.invoke(

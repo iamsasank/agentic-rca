@@ -57,11 +57,17 @@ class RcaWorkflow:
         wf.add_node("human_review_node", self.human_review)
         wf.add_node("postmortem_writer_agent", self.postmortem_writer)
 
+        # Fan-out: three specialist agents run in parallel after load_incident
         wf.add_edge(START, "load_incident")
         wf.add_edge("load_incident", "log_analyzer_agent")
-        wf.add_edge("log_analyzer_agent", "anomaly_detection_agent")
-        wf.add_edge("anomaly_detection_agent", "alert_correlation_agent")
-        wf.add_edge("alert_correlation_agent", "rag_context_agent")
+        wf.add_edge("load_incident", "anomaly_detection_agent")
+        wf.add_edge("load_incident", "alert_correlation_agent")
+
+        # Fan-in: rag_context waits for all three to complete
+        wf.add_edge("log_analyzer_agent",      "rag_context_agent")
+        wf.add_edge("anomaly_detection_agent",  "rag_context_agent")
+        wf.add_edge("alert_correlation_agent",  "rag_context_agent")
+
         wf.add_edge("rag_context_agent", "root_cause_reasoner_agent")
         wf.add_conditional_edges(
             "root_cause_reasoner_agent",
@@ -146,13 +152,9 @@ class RcaWorkflow:
     # ── Sequential fallback (no LangGraph) ───────────────────────────────────
 
     def _run_sequential(self, state: RcaState) -> None:
-        for fn in [
-            self._load_incident,
-            self.log_analyzer,
-            self.anomaly_detection,
-            self.alert_correlation,
-            self.rag_context,
-            self.root_cause_reasoner,
-            self.postmortem_writer,
-        ]:
+        # LangGraph not available — run the parallel agents sequentially as fallback
+        state.update(self._load_incident(state))
+        for fn in [self.log_analyzer, self.anomaly_detection, self.alert_correlation]:
+            state.update(fn(state))
+        for fn in [self.rag_context, self.root_cause_reasoner, self.postmortem_writer]:
             state.update(fn(state))

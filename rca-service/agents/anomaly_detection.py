@@ -16,9 +16,9 @@ STEP_DELAY = float(os.getenv("RCA_STEP_DELAY_SECONDS", "0.4"))
 
 _SYSTEM = """\
 You are a performance engineer analyzing metric anomalies during a production incident.
-Given the metric summary and log findings, identify:
+Given the metric summary, identify:
 1. Which metrics show anomalous behavior (name, peak value vs min baseline)
-2. Whether metric anomalies preceded or followed the log error spike
+2. The approximate time window of the anomaly and which services are affected
 3. Which service appears to be the origin vs a downstream victim
 
 Summarize in 4–6 bullet points with specific numbers.\
@@ -39,10 +39,7 @@ class AnomalyDetectionAgent:
             for name, v in metrics.items()
         ) or "No metrics available."
 
-        user_content = (
-            f"Metric summary:\n{metric_lines}\n\n"
-            f"Log findings:\n{state.get('log_findings', 'N/A')}"
-        )
+        user_content = f"Metric summary:\n{metric_lines}"
 
         response = self.llm.invoke(
             [
