@@ -1,0 +1,52 @@
+package com.rca.incident_service;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+
+@Service
+class IncidentQueryService {
+	private final JdbcTemplate jdbc;
+	private final DatabaseService database;
+
+	IncidentQueryService(JdbcTemplate jdbc, DatabaseService database) {
+		this.jdbc = jdbc;
+		this.database = database;
+	}
+
+	List<Map<String, Object>> listIncidents() {
+		database.ensureSchema();
+		return jdbc.queryForList("""
+				SELECT id, title, severity, service, environment, started_at AS "startedAt",
+				       duration_minutes AS "durationMinutes", impacted_services AS "impactedServices", data_source AS "dataSource"
+				FROM incidents ORDER BY started_at DESC
+				""");
+	}
+
+	Map<String, Object> getIncident(String incidentId) {
+		database.ensureSchema();
+		List<Map<String, Object>> rows = jdbc.queryForList("""
+				SELECT id, title, severity, service, environment, started_at AS "startedAt",
+				       duration_minutes AS "durationMinutes", impacted_services AS "impactedServices", data_source AS "dataSource"
+				FROM incidents WHERE id = ?
+				""", incidentId);
+		if (rows.isEmpty()) {
+			throw new IncidentNotFoundException(incidentId);
+		}
+		Map<String, Object> response = new LinkedHashMap<>(rows.get(0));
+		response.put("counts", Map.of(
+				"logs", count("incident_logs", incidentId),
+				"alerts", count("incident_alerts", incidentId),
+				"metrics", count("incident_metrics", incidentId),
+				"events", count("incident_events", incidentId),
+				"ragChunks", count("rag_chunks", incidentId)
+		));
+		return response;
+	}
+
+	private Integer count(String table, String incidentId) {
+		return jdbc.queryForObject("SELECT count(*) FROM " + table + " WHERE incident_id = ?", Integer.class, incidentId);
+	}
+}

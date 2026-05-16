@@ -1,0 +1,26 @@
+[
+  {
+    "id": "dynatrace-P-1842",
+    "source": "dynatrace",
+    "timestamp": "2026-02-26T14:28:00Z",
+    "service": "api-gateway",
+    "severity": "critical",
+    "message": "Error rate increase on api-gateway-prod-01"
+  },
+  {
+    "id": "dynatrace-host-memory",
+    "source": "dynatrace",
+    "timestamp": "2026-02-26T14:28:33Z",
+    "service": "api-gateway",
+    "severity": "critical",
+    "message": "GC overhead limit exceeded: 94% of time in GC, less than 2% heap recovered"
+  },
+  {
+    "id": "te-packet-loss-east",
+    "source": "thousandeyes",
+    "timestamp": "2026-02-26T14:30:00Z",
+    "service": "payments",
+    "severity": "major",
+    "message": "payments.processor.com path from East Coast agents has 8.3% packet loss"
+  }
+]

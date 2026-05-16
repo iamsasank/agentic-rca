@@ -1,0 +1,11 @@
+[
+  {"timestamp": "2026-02-26T14:26:12Z", "description": "GC overhead warnings begin on api-gateway-prod-01"},
+  {"timestamp": "2026-02-26T14:28:00Z", "description": "Dynatrace detects api-gateway error rate increase"},
+  {"timestamp": "2026-02-26T14:29:18Z", "description": "First OutOfMemoryError in HTTP request handler"},
+  {"timestamp": "2026-02-26T14:30:00Z", "description": "ThousandEyes detects East Coast packet loss to payment processor"},
+  {"timestamp": "2026-02-26T14:31:02Z", "description": "Fatal OutOfMemoryError at RequestCacheManager.put()"},
+  {"timestamp": "2026-02-26T14:32:00Z", "description": "BigPanda correlates host memory, error rate, and network path alerts"},
+  {"timestamp": "2026-02-26T14:45:00Z", "description": "Both root causes identified: memory leak and ISP transit packet loss"},
+  {"timestamp": "2026-02-26T14:50:00Z", "description": "api-gateway-prod-01 restarted"},
+  {"timestamp": "2026-02-26T14:53:00Z", "description": "Error rate and latency return to baseline"}
+]

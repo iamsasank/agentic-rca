@@ -1,0 +1,55 @@
+from __future__ import annotations
+
+import os
+import time
+from typing import TYPE_CHECKING, Any
+
+from langchain_core.messages import HumanMessage, SystemMessage
+
+from db import Database
+from state import RcaState
+
+if TYPE_CHECKING:
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+STEP_DELAY = float(os.getenv("RCA_STEP_DELAY_SECONDS", "0.4"))
+
+_SYSTEM = """\
+You are a performance engineer analyzing metric anomalies during a production incident.
+Given the metric summary and log findings, identify:
+1. Which metrics show anomalous behavior (name, peak value vs min baseline)
+2. Whether metric anomalies preceded or followed the log error spike
+3. Which service appears to be the origin vs a downstream victim
+
+Summarize in 4–6 bullet points with specific numbers.\
+"""
+
+
+class AnomalyDetectionAgent:
+    def __init__(self, db: Database, llm: ChatGoogleGenerativeAI) -> None:
+        self.db = db
+        self.llm = llm
+
+    def __call__(self, state: RcaState) -> dict[str, Any]:
+        self.db.update_job(state["job_id"], "running", "anomaly_detection_agent")
+
+        metrics = state.get("metrics", {})
+        metric_lines = "\n".join(
+            f"{name}: min={v['min']}, max={v['max']}, last={v['last']}"
+            for name, v in metrics.items()
+        ) or "No metrics available."
+
+        user_content = (
+            f"Metric summary:\n{metric_lines}\n\n"
+            f"Log findings:\n{state.get('log_findings', 'N/A')}"
+        )
+
+        response = self.llm.invoke(
+            [
+                SystemMessage(content=_SYSTEM),
+                HumanMessage(content=user_content),
+            ]
+        )
+
+        time.sleep(STEP_DELAY)
+        return {"metric_findings": response.content}

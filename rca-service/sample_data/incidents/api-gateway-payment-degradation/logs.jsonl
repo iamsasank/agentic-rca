@@ -1,0 +1,8 @@
+{"timestamp":"2026-02-26T14:26:12Z","host":"api-gateway-prod-01","level":"WARN","message":"GC overhead warning: 87% of CPU time in GC"}
+{"timestamp":"2026-02-26T14:27:45Z","host":"api-gateway-prod-01","level":"WARN","message":"GC overhead escalated to 91%, recovering less than 5% heap per cycle"}
+{"timestamp":"2026-02-26T14:29:18Z","host":"api-gateway-prod-01","level":"ERROR","message":"First OutOfMemoryError in HTTP request handler"}
+{"timestamp":"2026-02-26T14:31:02Z","host":"api-gateway-prod-01","level":"FATAL","message":"Fatal OutOfMemoryError at RequestCacheManager.put() line 142"}
+{"timestamp":"2026-02-26T14:30:00Z","host":"te-agent-nyc","level":"WARN","message":"Synthetic HTTP test to payments.processor.com shows 2400ms response and 8.3% packet loss"}
+{"timestamp":"2026-02-26T14:40:30Z","host":"te-agent-nyc","level":"INFO","message":"Path trace isolates packet loss to NTT peering point ae-12.r01.nycmny17.us.bb.gin.ntt.net"}
+{"timestamp":"2026-02-26T14:50:00Z","host":"api-gateway-prod-01","level":"INFO","message":"Service restarted, heap utilization dropped to normal"}
+{"timestamp":"2026-02-26T14:53:00Z","host":"api-gateway-prod-01","level":"INFO","message":"Error rate below 1%, latency back to baseline"}

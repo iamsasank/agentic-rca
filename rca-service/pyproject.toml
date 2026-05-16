@@ -1,0 +1,12 @@
+[project]
+name = "rca-service"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "langgraph>=0.2.0",
+    "psycopg[binary]>=3.2.0",
+    "langchain-google-genai>=2.0.0",
+    "langchain-core>=0.3.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.20",
+]

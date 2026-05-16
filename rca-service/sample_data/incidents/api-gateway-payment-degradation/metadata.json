@@ -1,0 +1,11 @@
+{
+  "id": "api-gateway-payment-degradation",
+  "title": "API gateway error rate spike with payment path degradation - prod-us-east",
+  "severity": "critical",
+  "service": "api-gateway",
+  "environment": "prod-us-east",
+  "startedAt": "2026-02-26T14:26:12Z",
+  "durationMinutes": 25,
+  "impactedServices": ["api-gateway", "payments", "checkout"],
+  "dataSource": "synthetic"
+}
