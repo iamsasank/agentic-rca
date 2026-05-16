@@ -10,7 +10,7 @@ from db import Database
 from state import RcaState
 
 if TYPE_CHECKING:
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    from langchain_openai import ChatOpenAI
 
 STEP_DELAY = float(os.getenv("RCA_STEP_DELAY_SECONDS", "0.4"))
 
@@ -26,7 +26,7 @@ Output: a numbered chronological timeline and a 2–3 sentence root trigger hypo
 
 
 class AlertCorrelationAgent:
-    def __init__(self, db: Database, llm: ChatGoogleGenerativeAI) -> None:
+    def __init__(self, db: Database, llm: ChatOpenAI) -> None:
         self.db = db
         self.llm = llm
 

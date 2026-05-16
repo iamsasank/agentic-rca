@@ -6,7 +6,7 @@ import json
 import os
 from typing import Any
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 
 from db import Database
 from graph import RcaWorkflow
@@ -14,7 +14,7 @@ from graph import RcaWorkflow
 QUEUE_KEY = os.getenv("RCA_QUEUE_KEY", "rca:jobs:queue")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 POSTGRES_DSN = os.getenv("POSTGRES_DSN", "postgresql://rca:rca@localhost:5432/rca")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
 # LangSmith tracing — set these env vars to enable:
 #   LANGCHAIN_TRACING_V2=true
@@ -100,7 +100,7 @@ async def worker_loop(redis: AsyncRedis, workflow: RcaWorkflow) -> None:
     mode = "langgraph" if workflow.graph is not None else "sequential-fallback"
     print(
         f"RCA worker started. queue={QUEUE_KEY} redis={REDIS_URL} "
-        f"postgres={POSTGRES_DSN} model={GEMINI_MODEL} mode={mode}",
+        f"postgres={POSTGRES_DSN} model={OPENAI_MODEL} mode={mode}",
         flush=True,
     )
 
@@ -139,7 +139,7 @@ async def main() -> None:
     redis = AsyncRedis(REDIS_URL)
     await redis.ping()
 
-    llm = ChatGoogleGenerativeAI(model=GEMINI_MODEL, temperature=0)
+    llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0)
     db = Database(POSTGRES_DSN)
     workflow = RcaWorkflow(db, llm)
 

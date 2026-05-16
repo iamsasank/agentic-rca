@@ -68,19 +68,18 @@ CREATE TABLE IF NOT EXISTS incident_runbooks (
 );
 
 --changeset rca:008-create-rag-chunks
+-- Spring AI PgVectorStore schema: id UUID, content TEXT, metadata JSON, embedding vector(1536)
+-- All incident-specific fields (incident_id, source_type, source_id) live in the metadata JSON.
 CREATE TABLE IF NOT EXISTS rag_chunks (
-  id bigserial PRIMARY KEY,
-  incident_id text NOT NULL REFERENCES incidents(id) ON DELETE CASCADE,
-  source_type text NOT NULL,
-  source_id text NOT NULL,
-  content text NOT NULL,
-  embedding vector(768) NOT NULL,
-  metadata jsonb NOT NULL
+  id      UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  content TEXT NOT NULL,
+  metadata JSON NOT NULL DEFAULT '{}',
+  embedding vector(1536)
 );
 
---changeset rca:008b-rag-chunks-ivfflat-index
-CREATE INDEX IF NOT EXISTS rag_chunks_embedding_idx
-  ON rag_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 50);
+--changeset rca:008b-rag-chunks-hnsw-index
+CREATE INDEX IF NOT EXISTS rag_chunks_embedding_hnsw_idx
+  ON rag_chunks USING hnsw (embedding vector_cosine_ops);
 
 --changeset rca:009-create-analysis-jobs
 CREATE TABLE IF NOT EXISTS analysis_jobs (

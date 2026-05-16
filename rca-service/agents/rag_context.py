@@ -11,7 +11,7 @@ from state import RcaState
 from vectorstore import embed
 
 if TYPE_CHECKING:
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    from langchain_openai import ChatOpenAI
 
 STEP_DELAY = float(os.getenv("RCA_STEP_DELAY_SECONDS", "0.4"))
 
@@ -26,7 +26,7 @@ Be concise and specific.\
 
 
 class RagContextAgent:
-    def __init__(self, db: Database, llm: ChatGoogleGenerativeAI) -> None:
+    def __init__(self, db: Database, llm: ChatOpenAI) -> None:
         self.db = db
         self.llm = llm
 
@@ -41,8 +41,17 @@ class RagContextAgent:
         query_embedding = embed(combined[:500])
         chunks = self.db.retrieve_context(state["incident_id"], query_embedding, limit=8)
 
+        def _meta(c: dict) -> dict:
+            m = c.get("metadata") or {}
+            return m if isinstance(m, dict) else {}
+
         chunk_text = "\n\n".join(
-            f"[{c['source_type']}:{c['source_id']}] {c['content']}" for c in chunks
+            "[{source_type}:{source_id}] {content}".format(
+                source_type=_meta(c).get("source_type", "chunk"),
+                source_id=_meta(c).get("source_id", str(c["id"])),
+                content=c["content"],
+            )
+            for c in chunks
         ) or "No context retrieved."
 
         response = self.llm.invoke(
@@ -52,6 +61,12 @@ class RagContextAgent:
             ]
         )
 
-        evidence_ids = [f"{c['source_type']}:{c['source_id']}" for c in chunks]
+        evidence_ids = [
+            "{source_type}:{source_id}".format(
+                source_type=_meta(c).get("source_type", "chunk"),
+                source_id=_meta(c).get("source_id", str(c["id"])),
+            )
+            for c in chunks
+        ]
         time.sleep(STEP_DELAY)
         return {"rag_context": response.content, "evidence_ids": evidence_ids}

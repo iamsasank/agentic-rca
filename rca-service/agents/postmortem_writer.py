@@ -11,7 +11,7 @@ from schemas import IncidentSummary
 from state import RcaState
 
 if TYPE_CHECKING:
-    from langchain_google_genai import ChatGoogleGenerativeAI
+    from langchain_openai import ChatOpenAI
 
 STEP_DELAY = float(os.getenv("RCA_STEP_DELAY_SECONDS", "0.4"))
 
@@ -30,7 +30,7 @@ Rules:
 
 
 class PostmortemWriterAgent:
-    def __init__(self, db: Database, llm: ChatGoogleGenerativeAI) -> None:
+    def __init__(self, db: Database, llm: ChatOpenAI) -> None:
         self.db = db
         self.structured_llm = llm.with_structured_output(IncidentSummary)
 

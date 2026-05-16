@@ -110,10 +110,10 @@ class Database:
         with self.connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, source_type, source_id, content, metadata,
+                SELECT id, content, metadata,
                        embedding <-> %s::vector AS distance
                 FROM rag_chunks
-                WHERE incident_id = %s
+                WHERE metadata->>'incident_id' = %s
                 ORDER BY embedding <-> %s::vector
                 LIMIT %s
                 """,

@@ -7,10 +7,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import org.springframework.ai.document.Document;
+import org.springframework.ai.transformer.splitter.TokenTextSplitter;
+import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,50 +21,51 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 class IngestionService {
 	private static final ObjectMapper MAPPER = new ObjectMapper();
-	private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
-	};
+	private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+	private static final TokenTextSplitter SPLITTER = new TokenTextSplitter();
 
 	private final JdbcTemplate jdbc;
 	private final DatabaseService database;
+	private final VectorStore vectorStore;
 	private final Path sampleDataDir;
-	private final GeminiEmbeddingClient embeddingClient;
 
-	IngestionService(JdbcTemplate jdbc, DatabaseService database,
-			RcaProperties properties, GeminiEmbeddingClient embeddingClient) {
+	IngestionService(JdbcTemplate jdbc, DatabaseService database, VectorStore vectorStore,
+			RcaProperties properties) {
 		this.jdbc = jdbc;
 		this.database = database;
+		this.vectorStore = vectorStore;
 		this.sampleDataDir = Path.of(properties.sampleDataDir()).normalize();
-		this.embeddingClient = embeddingClient;
 	}
 
 	@Transactional
 	Map<String, Object> ingestSampleIncidents() {
 		database.ensureSchema();
-		Map<String, Object> response = new LinkedHashMap<>();
-		int incidents = 0;
-		int logs = 0;
-		int alerts = 0;
-		int metrics = 0;
-		int events = 0;
-		int chunks = 0;
+		int incidents = 0, logs = 0, alerts = 0, metrics = 0, events = 0, chunks = 0;
+
 		try (var paths = Files.list(sampleDataDir)) {
 			for (Path incidentDir : paths.filter(Files::isDirectory).sorted().toList()) {
 				Map<String, Object> metadata = readMap(incidentDir.resolve("metadata.json"));
 				String incidentId = metadata.get("id").toString();
+
 				jdbc.update("DELETE FROM incidents WHERE id = ?", incidentId);
 				upsertIncident(metadata);
 				incidents++;
-				alerts += ingestAlerts(incidentId, incidentDir.resolve("alerts.json"));
-				logs += ingestLogs(incidentId, incidentDir.resolve("logs.jsonl"));
-				metrics += ingestMetrics(incidentId, incidentDir.resolve("metrics.json"));
-				events += ingestEvents(incidentId, incidentDir.resolve("events.json"));
+
+				alerts  += ingestAlerts(incidentId,  incidentDir.resolve("alerts.json"));
+				logs    += ingestLogs(incidentId,     incidentDir.resolve("logs.jsonl"));
+				metrics += ingestMetrics(incidentId,  incidentDir.resolve("metrics.json"));
+				events  += ingestEvents(incidentId,   incidentDir.resolve("events.json"));
 				ingestRunbook(incidentId, incidentDir.resolve("runbook.md"));
-				chunks += createChunks(incidentId);
+
+				// ── Spring AI ETL: build Documents → split → embed → store ──────
+				chunks += embedAndStore(incidentId, incidentDir);
 			}
 		}
 		catch (IOException ex) {
 			throw new IllegalStateException("Unable to ingest sample data from " + sampleDataDir, ex);
 		}
+
+		Map<String, Object> response = new LinkedHashMap<>();
 		response.put("status", "ingested");
 		response.put("sampleDataDir", sampleDataDir.toString());
 		response.put("incidents", incidents);
@@ -72,6 +76,70 @@ class IngestionService {
 		response.put("ragChunks", chunks);
 		return response;
 	}
+
+	// ── Spring AI ETL ──────────────────────────────────────────────────────────
+
+	private int embedAndStore(String incidentId, Path incidentDir) throws IOException {
+		List<Document> raw = new ArrayList<>();
+
+		// Logs
+		for (String line : Files.readAllLines(incidentDir.resolve("logs.jsonl"))) {
+			if (!line.isBlank()) {
+				Map<String, Object> log = fromJson(line);
+				raw.add(new Document(
+						log.getOrDefault("message", "").toString(),
+						Map.of("incident_id", incidentId, "source_type", "log",
+								"source_id", log.getOrDefault("id", "").toString())));
+			}
+		}
+
+		// Alerts
+		for (Map<String, Object> alert : readList(incidentDir.resolve("alerts.json"))) {
+			raw.add(new Document(
+					alert.getOrDefault("message", "").toString(),
+					Map.of("incident_id", incidentId, "source_type", "alert",
+							"source_id", alert.getOrDefault("id", "").toString())));
+		}
+
+		// Events
+		for (Map<String, Object> event : readList(incidentDir.resolve("events.json"))) {
+			raw.add(new Document(
+					event.getOrDefault("description", "").toString(),
+					Map.of("incident_id", incidentId, "source_type", "event",
+							"source_id", event.getOrDefault("id", "").toString())));
+		}
+
+		// Metrics — one summary document per metric name
+		JsonNode series = readJson(incidentDir.resolve("metrics.json")).path("series");
+		series.fields().forEachRemaining(entry -> {
+			double min = Double.MAX_VALUE, max = Double.MIN_VALUE;
+			for (JsonNode point : entry.getValue()) {
+				double v = point.path("value").asDouble();
+				if (v < min) min = v;
+				if (v > max) max = v;
+			}
+			String content = "Metric %s: min=%.4f max=%.4f".formatted(entry.getKey(), min, max);
+			raw.add(new Document(content,
+					Map.of("incident_id", incidentId, "source_type", "metric",
+							"source_id", entry.getKey())));
+		});
+
+		// Runbook — TokenTextSplitter chunks the markdown automatically
+		String runbookContent = Files.readString(incidentDir.resolve("runbook.md"));
+		List<Document> runbookDocs = new ArrayList<>();
+		runbookDocs.add(new Document(runbookContent,
+				Map.of("incident_id", incidentId, "source_type", "runbook", "source_id", "runbook")));
+
+		// Split all documents using Spring AI's token-aware splitter
+		List<Document> chunks = new ArrayList<>(SPLITTER.apply(raw));
+		chunks.addAll(SPLITTER.apply(runbookDocs));
+
+		// Embed + store via Spring AI PgVectorStore (ETL terminal step)
+		vectorStore.accept(chunks);
+		return chunks.size();
+	}
+
+	// ── Structured-table ingestion (unchanged) ─────────────────────────────────
 
 	private void upsertIncident(Map<String, Object> metadata) {
 		jdbc.update("""
@@ -89,16 +157,10 @@ class IngestionService {
 					metadata = excluded.metadata,
 					ingested_at = now()
 				""",
-				metadata.get("id"),
-				metadata.get("title"),
-				metadata.get("severity"),
-				metadata.get("service"),
-				metadata.get("environment"),
-				metadata.get("startedAt"),
-				metadata.get("durationMinutes"),
-				toJson(metadata.get("impactedServices")),
-				metadata.get("dataSource"),
-				toJson(metadata));
+				metadata.get("id"), metadata.get("title"), metadata.get("severity"),
+				metadata.get("service"), metadata.get("environment"), metadata.get("startedAt"),
+				metadata.get("durationMinutes"), toJson(metadata.get("impactedServices")),
+				metadata.get("dataSource"), toJson(metadata));
 	}
 
 	private int ingestAlerts(String incidentId, Path path) {
@@ -118,15 +180,14 @@ class IngestionService {
 	private int ingestLogs(String incidentId, Path path) throws IOException {
 		int count = 0;
 		for (String line : Files.readAllLines(path)) {
-			if (line.isBlank()) {
-				continue;
-			}
+			if (line.isBlank()) continue;
 			Map<String, Object> log = fromJson(line);
 			jdbc.update("""
 					INSERT INTO incident_logs (incident_id, timestamp_text, host, level, message, raw)
 					VALUES (?, ?, ?, ?, ?, ?::jsonb)
 					""",
-					incidentId, log.get("timestamp"), log.get("host"), log.get("level"), log.get("message"), toJson(log));
+					incidentId, log.get("timestamp"), log.get("host"),
+					log.get("level"), log.get("message"), toJson(log));
 			count++;
 		}
 		return count;
@@ -135,17 +196,17 @@ class IngestionService {
 	private int ingestMetrics(String incidentId, Path path) {
 		JsonNode series = readJson(path).path("series");
 		int count = 0;
-		series.fields().forEachRemaining(entry -> {
+		for (var entry : (Iterable<Map.Entry<String, JsonNode>>) series::fields) {
 			for (JsonNode point : entry.getValue()) {
 				jdbc.update("""
 						INSERT INTO incident_metrics (incident_id, metric_name, timestamp_text, value, raw)
 						VALUES (?, ?, ?, ?, ?::jsonb)
 						""",
-						incidentId, entry.getKey(), point.path("timestamp").asText(), point.path("value").asDouble(), point.toString());
+						incidentId, entry.getKey(),
+						point.path("timestamp").asText(), point.path("value").asDouble(),
+						point.toString());
+				count++;
 			}
-		});
-		for (JsonNode ignored : series) {
-			count += ignored.size();
 		}
 		return count;
 	}
@@ -164,105 +225,34 @@ class IngestionService {
 	}
 
 	private void ingestRunbook(String incidentId, Path path) throws IOException {
-		jdbc.update("INSERT INTO incident_runbooks (incident_id, content) VALUES (?, ?)", incidentId, Files.readString(path));
+		jdbc.update("INSERT INTO incident_runbooks (incident_id, content) VALUES (?, ?)",
+				incidentId, Files.readString(path));
 	}
 
-	private int createChunks(String incidentId) {
-		int chunks = 0;
-		List<Map<String, Object>> logs = jdbc.queryForList("SELECT id, message FROM incident_logs WHERE incident_id = ?", incidentId);
-		for (Map<String, Object> log : logs) {
-			insertChunk(incidentId, "log", log.get("id").toString(), log.get("message").toString(), Map.of("table", "incident_logs"));
-			chunks++;
-		}
-		List<Map<String, Object>> alerts = jdbc.queryForList("SELECT id, message FROM incident_alerts WHERE incident_id = ?", incidentId);
-		for (Map<String, Object> alert : alerts) {
-			insertChunk(incidentId, "alert", alert.get("id").toString(), alert.get("message").toString(), Map.of("table", "incident_alerts"));
-			chunks++;
-		}
-		List<Map<String, Object>> runbooks = jdbc.queryForList("SELECT id, content FROM incident_runbooks WHERE incident_id = ?", incidentId);
-		for (Map<String, Object> runbook : runbooks) {
-			for (String section : runbook.get("content").toString().split("\\n\\n")) {
-				if (!section.isBlank()) {
-					insertChunk(incidentId, "runbook", runbook.get("id").toString(), section.strip(), Map.of("table", "incident_runbooks"));
-					chunks++;
-				}
-			}
-		}
-		List<Map<String, Object>> metricSummaries = jdbc.queryForList("""
-				SELECT metric_name, min(value) AS min_value, max(value) AS max_value
-				FROM incident_metrics WHERE incident_id = ? GROUP BY metric_name
-				""", incidentId);
-		for (Map<String, Object> metric : metricSummaries) {
-			String content = "Metric %s min=%s max=%s".formatted(metric.get("metric_name"), metric.get("min_value"), metric.get("max_value"));
-			insertChunk(incidentId, "metric", metric.get("metric_name").toString(), content, Map.of("table", "incident_metrics"));
-			chunks++;
-		}
-		return chunks;
-	}
-
-	private void insertChunk(String incidentId, String sourceType, String sourceId, String content, Map<String, Object> metadata) {
-		jdbc.update("""
-				INSERT INTO rag_chunks (incident_id, source_type, source_id, content, embedding, metadata)
-				VALUES (?, ?, ?, ?, ?::vector, ?::jsonb)
-				""", incidentId, sourceType, sourceId, content, toVectorString(content), toJson(metadata));
-	}
-
-	private String toVectorString(String content) {
-		List<Double> vector = embeddingClient.embed(content);
-		StringBuilder sb = new StringBuilder("[");
-		for (int i = 0; i < vector.size(); i++) {
-			if (i > 0) {
-				sb.append(',');
-			}
-			sb.append(String.format(Locale.ROOT, "%.8f", vector.get(i)));
-		}
-		sb.append(']');
-		return sb.toString();
-	}
+	// ── JSON helpers ───────────────────────────────────────────────────────────
 
 	private Map<String, Object> readMap(Path path) {
-		try {
-			return MAPPER.readValue(path.toFile(), MAP_TYPE);
-		}
-		catch (IOException ex) {
-			throw new IllegalStateException("Unable to read " + path, ex);
-		}
+		try { return MAPPER.readValue(path.toFile(), MAP_TYPE); }
+		catch (IOException ex) { throw new IllegalStateException("Cannot read " + path, ex); }
 	}
 
 	private List<Map<String, Object>> readList(Path path) {
-		try {
-			return MAPPER.readValue(path.toFile(), new TypeReference<>() {
-			});
-		}
-		catch (IOException ex) {
-			throw new IllegalStateException("Unable to read " + path, ex);
-		}
+		try { return MAPPER.readValue(path.toFile(), new TypeReference<>() {}); }
+		catch (IOException ex) { throw new IllegalStateException("Cannot read " + path, ex); }
 	}
 
 	private JsonNode readJson(Path path) {
-		try {
-			return MAPPER.readTree(path.toFile());
-		}
-		catch (IOException ex) {
-			throw new IllegalStateException("Unable to read " + path, ex);
-		}
+		try { return MAPPER.readTree(path.toFile()); }
+		catch (IOException ex) { throw new IllegalStateException("Cannot read " + path, ex); }
 	}
 
 	private Map<String, Object> fromJson(String value) {
-		try {
-			return MAPPER.readValue(value, MAP_TYPE);
-		}
-		catch (JsonProcessingException ex) {
-			throw new IllegalStateException("Unable to parse JSON line", ex);
-		}
+		try { return MAPPER.readValue(value, MAP_TYPE); }
+		catch (JsonProcessingException ex) { throw new IllegalStateException("Cannot parse JSON", ex); }
 	}
 
 	private String toJson(Object value) {
-		try {
-			return MAPPER.writeValueAsString(value);
-		}
-		catch (JsonProcessingException ex) {
-			throw new IllegalStateException("Unable to serialize JSON", ex);
-		}
+		try { return MAPPER.writeValueAsString(value); }
+		catch (JsonProcessingException ex) { throw new IllegalStateException("Cannot serialize JSON", ex); }
 	}
 }
