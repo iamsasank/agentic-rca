@@ -116,3 +116,15 @@ CREATE TABLE IF NOT EXISTS analysis_results (
   postmortem text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
+
+--changeset rca:012-fix-rag-chunks-id-uuid
+-- Spring AI PgVectorStore requires id to be UUID; drop and recreate if it was created as bigserial.
+DROP TABLE IF EXISTS rag_chunks CASCADE;
+CREATE TABLE rag_chunks (
+  id      UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  content TEXT NOT NULL,
+  metadata JSON NOT NULL DEFAULT '{}',
+  embedding vector(1536)
+);
+CREATE INDEX rag_chunks_embedding_hnsw_idx
+  ON rag_chunks USING hnsw (embedding vector_cosine_ops);
