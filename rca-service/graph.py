@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import time
 from typing import Any
 
 from db import Database
@@ -22,9 +20,6 @@ try:
 except Exception:
     END = START = StateGraph = MemorySaver = Command = None
     _LANGGRAPH = False
-
-STEP_DELAY = float(os.getenv("RCA_STEP_DELAY_SECONDS", "0.4"))
-
 
 class RcaWorkflow:
     def __init__(self, db: Database, llm: Any) -> None:
@@ -100,7 +95,6 @@ class RcaWorkflow:
         metrics = self.db.metric_summary(state["incident_id"])
 
         self.db.update_job(state["job_id"], "running", "load_incident")
-        time.sleep(STEP_DELAY)
         return {
             "incident": incident,
             "logs": logs,

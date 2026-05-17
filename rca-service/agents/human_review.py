@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import os
-import time
 from typing import Any
 
 from db import Database
 from state import RcaState
-
-STEP_DELAY = float(os.getenv("RCA_STEP_DELAY_SECONDS", "0.4"))
-
 
 class HumanReviewNode:
     """
@@ -34,5 +29,4 @@ class HumanReviewNode:
             "secondary_causes": state.get("secondary_causes", []),
         })
 
-        time.sleep(STEP_DELAY)
         return {"analyst_feedback": str(feedback), "awaiting_approval": False}

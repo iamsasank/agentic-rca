@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import time
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -12,8 +10,6 @@ from state import RcaState
 
 if TYPE_CHECKING:
     from langchain_openai import ChatOpenAI
-
-STEP_DELAY = float(os.getenv("RCA_STEP_DELAY_SECONDS", "0.4"))
 
 _SYSTEM = """\
 You are a principal engineer and incident reviewer.
@@ -49,7 +45,6 @@ class RootCauseReasonerAgent:
             ]
         )
 
-        time.sleep(STEP_DELAY)
         return {
             "root_cause": result.primary_root_cause,
             "secondary_causes": result.secondary_causes,

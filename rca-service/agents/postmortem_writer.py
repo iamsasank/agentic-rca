@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import os
-import time
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -12,8 +10,6 @@ from state import RcaState
 
 if TYPE_CHECKING:
     from langchain_openai import ChatOpenAI
-
-STEP_DELAY = float(os.getenv("RCA_STEP_DELAY_SECONDS", "0.4"))
 
 _SYSTEM = """\
 You are a technical writer producing a structured incident post-mortem.
@@ -72,7 +68,6 @@ class PostmortemWriterAgent:
         postmortem = _render_postmortem(summary)
         self.db.write_result(state, result_dict, postmortem)
 
-        time.sleep(STEP_DELAY)
         return {"final_summary": result_dict, "postmortem_md": postmortem}
 
 
