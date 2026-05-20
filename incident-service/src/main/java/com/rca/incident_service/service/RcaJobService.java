@@ -77,7 +77,6 @@ public class RcaJobService {
 				"incidentId", incidentId,
 				"status", "queued",
 				"statusUrl", "/api/analysis-jobs/%s".formatted(jobId),
-				"traceUrl", "/api/analysis-jobs/%s/trace".formatted(jobId),
 				"resultUrl", "/api/analysis-jobs/%s/result".formatted(jobId),
 				"postmortemUrl", "/api/analysis-jobs/%s/postmortem".formatted(jobId)
 		);
@@ -94,16 +93,6 @@ public class RcaJobService {
 			throw new JobNotFoundException(jobId);
 		}
 		return rows.get(0);
-	}
-
-	public List<Map<String, Object>> getTrace(String jobId) {
-		getStatus(jobId);
-		return jdbc.queryForList("""
-				SELECT agent_name AS "agentName", tool_name AS "toolName", input_summary AS "inputSummary",
-				       output_summary AS "outputSummary", evidence_ids AS "evidenceIds", details,
-				       created_at AS "createdAt"
-				FROM agent_traces WHERE job_id = ? ORDER BY id
-				""", jobId);
 	}
 
 	public Map<String, Object> getResult(String jobId) {

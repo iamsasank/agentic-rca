@@ -34,8 +34,11 @@ class RagContextAgent:
             state.get("metric_findings", ""),
             state.get("alert_findings", ""),
         ]))
-        query_embedding = embed(combined[:500])
-        chunks = self.db.retrieve_context(state["incident_id"], query_embedding, limit=8)
+        query_text = combined[:500]
+        query_embedding = embed(query_text)
+        chunks = self.db.retrieve_context_hybrid(
+            state["incident_id"], query_embedding, query_text, limit=8
+        )
 
         def _meta(c: dict) -> dict:
             m = c.get("metadata") or {}

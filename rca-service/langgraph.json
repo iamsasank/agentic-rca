@@ -1,0 +1,7 @@
+{
+  "graphs": {
+    "rca_workflow": "./app.py:graph"
+  },
+  "env": ".env",
+  "dependencies": ["."]
+}

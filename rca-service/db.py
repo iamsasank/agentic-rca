@@ -121,6 +121,71 @@ class Database:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def retrieve_context_hybrid(
+        self,
+        incident_id: str,
+        query_embedding: str,
+        query_text: str,
+        limit: int = 8,
+        rrf_k: int = 60,
+    ) -> list[dict[str, Any]]:
+        """Hybrid search: vector (cosine) + full-text (BM25), merged via Reciprocal Rank Fusion."""
+        candidate_limit = limit * 3
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                WITH vector_ranked AS (
+                    SELECT id,
+                           ROW_NUMBER() OVER (ORDER BY embedding <-> %s::vector) AS rank
+                    FROM rag_chunks
+                    WHERE metadata->>'incident_id' = %s
+                    ORDER BY embedding <-> %s::vector
+                    LIMIT %s
+                ),
+                text_ranked AS (
+                    SELECT id,
+                           ROW_NUMBER() OVER (
+                               ORDER BY ts_rank(
+                                   to_tsvector('english', content),
+                                   plainto_tsquery('english', %s)
+                               ) DESC
+                           ) AS rank
+                    FROM rag_chunks
+                    WHERE metadata->>'incident_id' = %s
+                      AND to_tsvector('english', content) @@ plainto_tsquery('english', %s)
+                    ORDER BY ts_rank(
+                        to_tsvector('english', content),
+                        plainto_tsquery('english', %s)
+                    ) DESC
+                    LIMIT %s
+                ),
+                rrf AS (
+                    SELECT
+                        COALESCE(v.id, t.id) AS id,
+                        COALESCE(1.0 / (%s + v.rank), 0.0)
+                        + COALESCE(1.0 / (%s + t.rank), 0.0) AS rrf_score
+                    FROM vector_ranked v
+                    FULL OUTER JOIN text_ranked t ON v.id = t.id
+                )
+                SELECT c.id, c.content, c.metadata, r.rrf_score
+                FROM rrf r
+                JOIN rag_chunks c ON c.id = r.id
+                ORDER BY r.rrf_score DESC
+                LIMIT %s
+                """,
+                (
+                    # vector_ranked
+                    query_embedding, incident_id, query_embedding, candidate_limit,
+                    # text_ranked
+                    query_text, incident_id, query_text, query_text, candidate_limit,
+                    # rrf k constants
+                    rrf_k, rrf_k,
+                    # final limit
+                    limit,
+                ),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
     def write_result(
         self, state: dict[str, Any], result: dict[str, Any], postmortem: str
     ) -> None:

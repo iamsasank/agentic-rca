@@ -10,6 +10,7 @@ from langchain_openai import ChatOpenAI
 
 from db import Database
 from graph import RcaWorkflow
+from semantic_cache import install_semantic_cache
 
 QUEUE_KEY = os.getenv("RCA_QUEUE_KEY", "rca:jobs:queue")
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
@@ -139,9 +140,11 @@ async def main() -> None:
     redis = AsyncRedis(REDIS_URL)
     await redis.ping()
 
+    install_semantic_cache()
+
     llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0)
     db = Database(POSTGRES_DSN)
-    workflow = RcaWorkflow(db, llm)
+    workflow = RcaWorkflow(db, llm, POSTGRES_DSN)
 
     await worker_loop(redis, workflow)
 

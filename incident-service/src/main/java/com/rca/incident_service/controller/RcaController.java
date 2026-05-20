@@ -4,7 +4,6 @@ import com.rca.incident_service.exception.IncidentNotFoundException;
 import com.rca.incident_service.exception.JobNotFoundException;
 import com.rca.incident_service.service.IngestionService;
 import com.rca.incident_service.service.RcaJobService;
-import java.util.List;
 import java.util.Map;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -51,11 +50,6 @@ public class RcaController {
 	@GetMapping("/api/analysis-jobs/{jobId}")
 	public Map<String, Object> getStatus(@PathVariable String jobId) {
 		return jobs.getStatus(jobId);
-	}
-
-	@GetMapping("/api/analysis-jobs/{jobId}/trace")
-	public List<Map<String, Object>> getTrace(@PathVariable String jobId) {
-		return jobs.getTrace(jobId);
 	}
 
 	@GetMapping("/api/analysis-jobs/{jobId}/result")

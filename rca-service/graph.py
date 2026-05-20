@@ -12,17 +12,14 @@ from agents.root_cause_reasoner import RootCauseReasonerAgent
 from agents.human_review import HumanReviewNode
 from agents.postmortem_writer import PostmortemWriterAgent
 
-try:
-    from langgraph.graph import END, START, StateGraph
-    from langgraph.checkpoint.memory import MemorySaver
-    from langgraph.types import Command
-    _LANGGRAPH = True
-except Exception:
-    END = START = StateGraph = MemorySaver = Command = None
-    _LANGGRAPH = False
+import psycopg
+from langgraph.graph import END, START, StateGraph
+from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.types import Command
+
 
 class RcaWorkflow:
-    def __init__(self, db: Database, llm: Any) -> None:
+    def __init__(self, db: Database, llm: Any, postgres_dsn: str | None = None) -> None:
         self.db = db
 
         self.log_analyzer = LogAnalyzerAgent(db, llm)
@@ -33,15 +30,18 @@ class RcaWorkflow:
         self.human_review = HumanReviewNode(db)
         self.postmortem_writer = PostmortemWriterAgent(db, llm)
 
-        self._checkpointer = MemorySaver() if _LANGGRAPH else None
+        if postgres_dsn:
+            conn = psycopg.connect(postgres_dsn, autocommit=True)
+            self._checkpointer = PostgresSaver(conn)
+            self._checkpointer.setup()
+        else:
+            self._checkpointer = None  # LangGraph Studio provides its own checkpointer
+
         self.graph = self._build_graph()
 
     # ── Graph construction ────────────────────────────────────────────────────
 
     def _build_graph(self) -> Any:
-        if not _LANGGRAPH:
-            return None
-
         wf = StateGraph(RcaState)
         wf.add_node("load_incident", self._load_incident)
         wf.add_node("log_analyzer_agent", self.log_analyzer)
@@ -120,13 +120,10 @@ class RcaWorkflow:
         config = {"configurable": {"thread_id": job_id}}
 
         try:
-            if self.graph is not None:
-                self.graph.invoke(initial, config)
-                snapshot = self.graph.get_state(config)
-                if snapshot.next:
-                    return False  # interrupted at human_review_node
-            else:
-                self._run_sequential(initial)
+            self.graph.invoke(initial, config)
+            snapshot = self.graph.get_state(config)
+            if snapshot.next:
+                return False  # interrupted at human_review_node
 
             self.db.update_job(job_id, "completed", "completed", completed=True)
             return True
@@ -137,18 +134,7 @@ class RcaWorkflow:
 
     def resume(self, job_id: str, analyst_feedback: str) -> None:
         """Resume a graph that was interrupted at human_review_node."""
-        if self.graph is None or Command is None:
-            raise RuntimeError("LangGraph not available — cannot resume")
         config = {"configurable": {"thread_id": job_id}}
         self.graph.invoke(Command(resume=analyst_feedback), config)
         self.db.update_job(job_id, "completed", "completed", completed=True)
 
-    # ── Sequential fallback (no LangGraph) ───────────────────────────────────
-
-    def _run_sequential(self, state: RcaState) -> None:
-        # LangGraph not available — run the parallel agents sequentially as fallback
-        state.update(self._load_incident(state))
-        for fn in [self.log_analyzer, self.anomaly_detection, self.alert_correlation]:
-            state.update(fn(state))
-        for fn in [self.rag_context, self.root_cause_reasoner, self.postmortem_writer]:
-            state.update(fn(state))

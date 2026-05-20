@@ -117,6 +117,10 @@ CREATE TABLE IF NOT EXISTS analysis_results (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+--changeset rca:013-drop-agent-traces
+-- Tracing moved to LangSmith; agent_traces table no longer needed.
+DROP TABLE IF EXISTS agent_traces CASCADE;
+
 --changeset rca:012-fix-rag-chunks-id-uuid
 -- Spring AI PgVectorStore requires id to be UUID; drop and recreate if it was created as bigserial.
 DROP TABLE IF EXISTS rag_chunks CASCADE;
