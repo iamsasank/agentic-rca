@@ -111,10 +111,10 @@ class Database:
             rows = conn.execute(
                 """
                 SELECT id, content, metadata,
-                       embedding <-> %s::vector AS distance
+                       embedding <=> %s::vector AS distance
                 FROM rag_chunks
                 WHERE metadata->>'incident_id' = %s
-                ORDER BY embedding <-> %s::vector
+                ORDER BY embedding <=> %s::vector
                 LIMIT %s
                 """,
                 (query_embedding, incident_id, query_embedding, limit),
@@ -136,10 +136,10 @@ class Database:
                 """
                 WITH vector_ranked AS (
                     SELECT id,
-                           ROW_NUMBER() OVER (ORDER BY embedding <-> %s::vector) AS rank
+                           ROW_NUMBER() OVER (ORDER BY embedding <=> %s::vector) AS rank
                     FROM rag_chunks
                     WHERE metadata->>'incident_id' = %s
-                    ORDER BY embedding <-> %s::vector
+                    ORDER BY embedding <=> %s::vector
                     LIMIT %s
                 ),
                 text_ranked AS (
